@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.Python
+out/*.png
+out/toolbar_crop.png
+out/top_strip.png
+out/mute_tool_circled.png
+*.tmp
+.DS_Store
+Thumbs.db
