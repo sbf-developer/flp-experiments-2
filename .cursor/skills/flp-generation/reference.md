@@ -137,7 +137,8 @@ use 60. Mixing sizes crashes FL (`FLEngine_x64.dll`).
 
 ```python
 # track_rvidx = 500 - track_iid   → lands on playlist track iid
-# Never use iid 1 on phonk mano (disabled+locked in the template).
+# phonk mano: never use iid 1 (Original, disabled).
+# Correct lanes: 2=Cowbell, 3=Bass, 5=Kick, 8=Snares, 13=FX
 # Force-enable after clone:
 def enable_track(p: bytes) -> bytes:
     d = bytearray(p)

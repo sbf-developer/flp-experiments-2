@@ -1,8 +1,11 @@
 """
-Generate a complete dark phonk .flp by cloning the factory phonk mano template
-and patching notes, playlist, sample paths, routing, names, and VSTs.
+Generate "Covenant Strike" — hardstyle × dark phonk .flp.
 
-Song: "Dark Phonk" — Ab minor, 130 BPM, ~64 bars (~1:58).
+Clone-and-patch of factory phonk mano. Fixed playlist lane map (phonk mano
+iid 2=Cowbell, 3=Bass, 5=Kick, 8=Snares, 13=FX — NOT the off-by-one map).
+
+Song: F# minor, 150 BPM, 64 bars (~1:42). Clear half-time verses →
+hardtekk build → hardstyle drop → ultra break → drop 2 → outro.
 """
 from __future__ import annotations
 
@@ -13,13 +16,9 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 NOTE = struct.Struct("<iHH iHH b B b b b b b b")  # 24
-# Pattern-clip layout matches phonk mano template. Last 8 bytes are NOT
-# real floats for pattern clips — they are uint32 (0, length). Writing
-# float 0.0/0.0 makes FL show zero-width "sliver" clips in the playlist.
 CLIP = struct.Struct("<I H H I H H 2s H 4s I I")  # 32 pre-FL21
 BAR = 384
-BEAT = 96
-STEP = 24  # 16th
+BPM = 150
 
 MISSING_VSTS = (
     "Serum",
@@ -37,11 +36,8 @@ PACK = Path(
 )
 TEMPLATE = PACK / "phonk mano.flp"
 OUT_DIR = Path(__file__).resolve().parent / "out"
-OUT_FLP = OUT_DIR / "dark_phonk.flp"
-
-# ---------------------------------------------------------------------------
-# Channels (template indices) → local factory samples + display names
-# ---------------------------------------------------------------------------
+OUT_FLP = OUT_DIR / "covenant_strike.flp"
+SONG_TITLE = "Covenant Strike"
 
 SAMPLE_MAP = {
     1: "!K - Cowbell (2).wav",
@@ -63,11 +59,6 @@ SAMPLE_MAP = {
     17: "FX Mano 2.wav",
     21: "808 (2).wav",
     22: "!K - Bass (6).wav",
-    24: "Slowboy, lucaf, Crazy Mano - Brazilian Phonk Mano.mp3",
-    25: "Slowboy, lucaf, Crazy Mano - Brazilian Phonk Mano [vocals].wav",
-    26: "Slowboy, lucaf, Crazy Mano - Brazilian Phonk Mano.mp3",
-    27: "Slowboy, lucaf, Crazy Mano - Brazilian Phonk Mano.mp3",
-    28: "Slowboy, lucaf, Crazy Mano - Brazilian Phonk Mano [vocals].wav",
 }
 
 CHANNEL_NAMES = {
@@ -107,20 +98,45 @@ BASS_808, BASS_SHOT = 21, 22
 
 USED_CHANNELS = set(CHANNEL_NAMES)
 
-# Ab minor pitch set (MIDI) — cowbell / 808 register from template
-AB2, BB2, DB3, EB3, F3, GB3, AB3, BB3, DB4, EB4 = (
-    44,
-    46,
+# F# minor
+FS2, A2, B2, CS3, E3, FS3, A3, B3, CS4, FS4 = (
+    42,
+    45,
+    47,
     49,
-    51,
-    53,
+    52,
     54,
-    56,
-    58,
+    57,
+    59,
     61,
-    63,
+    66,
 )
-DRUM = 60  # C5 — default sampler root for one-shots
+DRUM = 60
+
+# phonk mano playlist lanes (verified from TrackData iid + TrackName)
+# iid 1 = "Original" — disabled in template; leave empty
+TR_COWBELL = 2  # Cowbell
+TR_BASS = 3  # Bass & Subscribe
+TR_DRUMS = 5  # Kick
+TR_PERC = 8  # Snares
+TR_FX = 13  # FX
+
+TRACK_RENAMES = {
+    1: "—",
+    2: "Cowbell",
+    3: "808 Bass",
+    4: "—",
+    5: "Drums",
+    6: "—",
+    7: "—",
+    8: "Perc",
+    9: "—",
+    10: "—",
+    11: "—",
+    12: "—",
+    13: "FX",
+    14: "—",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -213,25 +229,26 @@ def utf16_encode(s: str) -> bytes:
     return s.encode("utf-16-le") + b"\x00\x00"
 
 
-def n(
-    pos: int,
-    key: int,
-    length: int = 48,
-    rack: int = 0,
-    vel: int = 100,
-) -> bytes:
-    """Pack a normal (non-slide) note."""
+def n(pos: int, key: int, length: int = 48, rack: int = 0, vel: int = 100) -> bytes:
     return NOTE.pack(
-        pos, 0x4000, rack, length, key, 0, 120, 0, 64, -128, 64, max(1, min(127, vel)), -128, -128
+        pos,
+        0x4000,
+        rack,
+        length,
+        key,
+        0,
+        120,
+        0,
+        64,
+        -128,
+        64,
+        max(1, min(127, vel)),
+        -128,
+        -128,
     )
 
 
 def pack_clip(pattern: int, start_bar: float, length_bars: float, track_iid: int) -> bytes:
-    """Pack a pattern playlist clip onto playlist track ``track_iid`` (1-based).
-
-    FL stores ``track_rvidx = 500 - track_iid``. Track iid 1 ("Original") in
-    phonk mano is DISABLED — never place clips there. Use 2/3/5/8/13.
-    """
     position = int(round(start_bar * BAR))
     length = int(round(length_bars * BAR))
     return CLIP.pack(
@@ -242,423 +259,369 @@ def pack_clip(pattern: int, start_bar: float, length_bars: float, track_iid: int
         500 - track_iid,
         0,
         b"\x78\x00",
-        0x8040,  # unmuted
+        0x8040,
         b"@d\x80\x80",
         0,
         length,
     )
 
 
-# Playlist track IIDs from phonk mano (verified TrackData iid + name)
-# iid 1 = "Original" (disabled in template) — never place clips there
-TR_COWBELL = 2  # "Cowbell"
-TR_BASS = 3  # "Bass & Subscribe"
-TR_DRUMS = 5  # "Kick"
-TR_PERC = 8  # "Snares"
-TR_FX = 13  # "FX"
-
-
 def join_notes(hits: list[tuple]) -> bytes:
-    """hits: (pos, key, length, rack, vel)"""
     return b"".join(n(*h) for h in hits)
 
 
 # ---------------------------------------------------------------------------
-# Patterns — each is playable alone in PAT mode and stacks cleanly in Song
+# Patterns — sparse hooks, clear roles (no density soup)
 # ---------------------------------------------------------------------------
-# Track layout in playlist:
-#   1 cowbell  2 drums  3 808  4 percussion spice  5 impacts/FX
 
 
-def pat_cowbell_a() -> bytes:
-    """PAT 1 — 4-bar main cowbell hook (Ab minor)."""
-    hits = [
-        # bar 1 — statement
-        (0, AB3, 72, COWBELL, 118),
-        (72, EB3, 48, COWBELL, 92),
-        (144, DB3, 72, COWBELL, 105),
-        (240, AB3, 48, COWBELL, 88),
-        (288, BB3, 72, COWBELL, 108),
-        # bar 2 — answer down
-        (384, AB3, 72, COWBELL, 116),
-        (456, F3, 48, COWBELL, 90),
-        (528, EB3, 72, COWBELL, 102),
-        (624, DB3, 48, COWBELL, 95),
-        (696, EB3, 72, COWBELL, 100),
-        # bar 3 — syncopated climb
-        (768, AB3, 48, COWBELL, 118),
-        (840, EB3, 48, COWBELL, 88),
-        (888, GB3, 48, COWBELL, 95),
-        (960, F3, 72, COWBELL, 105),
-        (1056, EB3, 48, COWBELL, 90),
-        (1104, DB3, 72, COWBELL, 100),
-        # bar 4 — resolve + pickup
-        (1152, AB3, 72, COWBELL, 120),
-        (1224, BB2, 48, COWBELL, 92),
-        (1296, DB3, 72, COWBELL, 105),
-        (1392, EB3, 48, COWBELL, 95),
-        (1440, AB3, 96, COWBELL, 118),
-    ]
-    return join_notes(hits)
-
-
-def pat_cowbell_b() -> bytes:
-    """PAT 2 — 4-bar variation (higher, more aggressive — for drop)."""
-    hits = [
-        (0, EB4, 48, COWBELL, 120),
-        (72, DB4, 48, COWBELL, 100),
-        (144, AB3, 72, COWBELL, 110),
-        (240, BB3, 48, COWBELL, 95),
-        (288, EB4, 72, COWBELL, 115),
-        (384, DB4, 48, COWBELL, 118),
-        (456, BB3, 48, COWBELL, 95),
-        (528, AB3, 72, COWBELL, 108),
-        (624, F3, 48, COWBELL, 90),
-        (672, EB3, 72, COWBELL, 100),
-        (768, AB3, 48, COWBELL, 120),
-        (816, BB3, 48, COWBELL, 100),
-        (864, DB4, 48, COWBELL, 105),
-        (912, EB4, 72, COWBELL, 118),
-        (1008, DB4, 48, COWBELL, 100),
-        (1056, BB3, 48, COWBELL, 95),
-        (1104, AB3, 72, COWBELL, 110),
-        (1152, EB4, 48, COWBELL, 122),
-        (1224, DB4, 48, COWBELL, 105),
-        (1296, BB3, 48, COWBELL, 100),
-        (1344, AB3, 48, COWBELL, 110),
-        (1392, EB3, 48, COWBELL, 95),
-        (1440, AB3, 96, COWBELL, 120),
-    ]
-    return join_notes(hits)
-
-
-def pat_drums_intro() -> bytes:
-    """PAT 3 — 1-bar sparse intro (kick pulse + soft clap)."""
+def pat_cowbell_hook() -> bytes:
+    """PAT 1 — 4-bar main hook (room between hits)."""
     return join_notes(
         [
-            (0, DRUM, 60, KICK, 110),
-            (0, DRUM, 48, KICK2, 70),
-            (192, DRUM, 60, KICK, 95),
-            (288, DRUM, 48, CLAP, 75),
+            (0, FS3, 96, COWBELL, 118),
+            (192, CS3, 72, COWBELL, 95),
+            (384, A3, 96, COWBELL, 110),
+            (576, B2, 72, COWBELL, 90),
+            (768, FS3, 72, COWBELL, 120),
+            (912, E3, 72, COWBELL, 100),
+            (1056, CS3, 72, COWBELL, 95),
+            (1152, FS3, 120, COWBELL, 122),
+            (1392, CS4, 72, COWBELL, 105),
         ]
     )
 
 
-def pat_drums_groove() -> bytes:
-    """PAT 4 — 1-bar main phonk groove (layered kick/clap/snares)."""
-    hits = [
-        # Kick: 1 . . and | 3 . a .
-        (0, DRUM, 60, KICK, 122),
-        (0, DRUM, 48, KICK2, 85),
-        (144, DRUM, 36, KICK, 78),
-        (192, DRUM, 60, KICK, 115),
-        (192, DRUM, 48, KICK2, 75),
-        (336, DRUM, 36, KICK, 72),
-        # Clap on 2 + 4
-        (96, DRUM, 48, CLAP, 118),
-        (288, DRUM, 48, CLAP, 120),
-        # Snare body under clap + ghosts
-        (96, DRUM, 36, SNARE, 70),
-        (288, DRUM, 48, SNARE, 100),
-        (240, DRUM, 24, SNARE2, 45),
-        (360, DRUM, 24, SNARE2, 55),
-        # Light snare3 tick on offbeats
-        (168, DRUM, 20, SNARE3, 40),
-        (312, DRUM, 20, SNARE3, 48),
-    ]
-    return join_notes(hits)
-
-
-def pat_drums_half() -> bytes:
-    """PAT 5 — 1-bar half-time break groove."""
+def pat_cowbell_drop() -> bytes:
+    """PAT 2 — 4-bar drop accents (not a wall — answers the kick)."""
     return join_notes(
         [
-            (0, DRUM, 72, KICK, 118),
-            (0, DRUM, 48, KICK2, 80),
-            (192, DRUM, 72, KICK, 100),
-            (96, DRUM, 60, CLAP, 110),
-            (96, DRUM, 48, SNARE, 85),
-            (288, DRUM, 36, SNARE2, 60),
-            (336, DRUM, 24, SNARE3, 50),
-        ]
-    )
-
-
-def pat_drums_fill_a() -> bytes:
-    """PAT 6 — 1-bar snare roll fill into section."""
-    hits = [
-        (0, DRUM, 48, KICK, 115),
-        (0, DRUM, 36, KICK2, 70),
-        (96, DRUM, 36, CLAP, 100),
-        (96, DRUM, 36, SNARE, 80),
-    ]
-    # crescendo 16ths across beat 3–4 using fill samples
-    fills = [FILL1, FILL2, FILL1, FILL3, FILL2, FILL4, FILL3, FILL5]
-    vels = [65, 72, 78, 85, 95, 105, 115, 127]
-    for i, (rack, vel) in enumerate(zip(fills, vels)):
-        hits.append((192 + i * 24, DRUM, 20, rack, vel))
-    hits.append((0, DRUM, 96, CRASH, 70))  # soft swell under
-    return join_notes(hits)
-
-
-def pat_drums_fill_b() -> bytes:
-    """PAT 7 — 1-bar punchy pre-drop fill."""
-    hits = [
-        (0, DRUM, 48, KICK, 120),
-        (48, DRUM, 24, KICK, 70),
-        (96, DRUM, 36, CLAP, 110),
-        (144, DRUM, 24, SNARE, 80),
-        (168, DRUM, 24, SNARE2, 90),
-        (192, DRUM, 24, SNARE, 95),
-        (216, DRUM, 24, SNARE3, 100),
-        (240, DRUM, 24, SNARE, 108),
-        (264, DRUM, 24, SNARE4, 115),
-        (288, DRUM, 36, CLAP, 122),
-        (288, DRUM, 36, SNARE, 110),
-        (336, DRUM, 24, FILL5, 127),
-        (360, DRUM, 24, FILL4, 120),
-        (0, DRUM, 120, FX, 90),
-    ]
-    return join_notes(hits)
-
-
-def pat_808_verse() -> bytes:
-    """PAT 8 — 4-bar verse 808 (Ab–Eb–Bb–Db walk)."""
-    hits = [
-        # bar 1 Ab
-        (0, AB2, 168, BASS_808, 122),
-        (0, AB3, 72, BASS_SHOT, 88),
-        (192, AB2, 120, BASS_808, 100),
-        # bar 2 Eb / Db
-        (384, EB3, 168, BASS_808, 118),
-        (384, EB3, 60, BASS_SHOT, 80),
-        (576, DB3, 140, BASS_808, 108),
-        # bar 3 Bb / Ab
-        (768, BB2, 160, BASS_808, 118),
-        (768, AB3, 60, BASS_SHOT, 85),
-        (960, AB2, 140, BASS_808, 112),
-        # bar 4 Db → Bb → Ab
-        (1152, DB3, 120, BASS_808, 118),
-        (1152, DB3, 60, BASS_SHOT, 88),
-        (1296, BB2, 88, BASS_808, 100),
-        (1392, AB2, 120, BASS_808, 122),
-    ]
-    return join_notes(hits)
-
-
-def pat_808_drop() -> bytes:
-    """PAT 9 — 4-bar drop 808 (harder, more stabs)."""
-    hits = [
-        # bar 1 — Ab with mid stab
-        (0, AB2, 150, BASS_808, 127),
-        (0, AB3, 84, BASS_SHOT, 105),
-        (144, AB2, 40, BASS_808, 85),
-        (192, AB3, 90, BASS_808, 112),
-        (288, AB2, 72, BASS_808, 100),
-        # bar 2 — low Eb
-        (384, 39, 170, BASS_808, 125),  # Eb2
-        (384, EB3, 72, BASS_SHOT, 95),
-        (576, AB2, 140, BASS_808, 115),
-        # bar 3 — Bb bounce
-        (768, BB2, 150, BASS_808, 122),
-        (768, AB3, 60, BASS_SHOT, 100),
-        (912, DB3, 60, BASS_808, 95),
-        (960, AB2, 150, BASS_808, 120),
-        # bar 4 — sub Ab + walk
-        (1152, 37, 170, BASS_808, 127),  # low Ab-ish
-        (1152, AB2, 84, BASS_SHOT, 110),
-        (1344, AB2, 88, BASS_808, 112),
-        (1440, DB3, 72, BASS_808, 100),
-        (1440, EB3, 48, BASS_SHOT, 90),
-    ]
-    return join_notes(hits)
-
-
-def pat_808_break() -> bytes:
-    """PAT 10 — 4-bar minimal 808 (breathing room)."""
-    return join_notes(
-        [
-            (0, AB2, 280, BASS_808, 110),
-            (384, EB3, 280, BASS_808, 100),
-            (768, BB2, 280, BASS_808, 105),
-            (1152, AB2, 280, BASS_808, 115),
-            (0, AB3, 96, BASS_SHOT, 70),
-            (1152, AB3, 96, BASS_SHOT, 75),
-        ]
-    )
-
-
-def pat_perc_spice() -> bytes:
-    """PAT 11 — 1-bar extra percussion for drop density."""
-    return join_notes(
-        [
-            (48, DRUM, 20, SNARE4, 50),
-            (120, DRUM, 20, SNARE3, 55),
-            (216, DRUM, 20, SNARE4, 48),
-            (264, DRUM, 20, SNARE2, 60),
-            (312, DRUM, 20, SNARE3, 52),
-            (348, DRUM, 18, SNARE4, 58),
-        ]
-    )
-
-
-def pat_impact() -> bytes:
-    """PAT 12 — 1-bar section impact (crash + FX)."""
-    return join_notes(
-        [
-            (0, DRUM, 240, CRASH, 115),
-            (0, DRUM, 180, CRASH2, 90),
-            (0, DRUM, 192, FX, 100),
-            (192, DRUM, 120, FX2, 85),
-            (0, DRUM, 72, KICK, 127),
-            (0, DRUM, 48, KICK2, 100),
+            (0, CS4, 60, COWBELL, 120),
+            (192, FS3, 72, COWBELL, 108),
+            (384, FS4, 60, COWBELL, 122),
+            (576, CS4, 72, COWBELL, 105),
+            (768, A3, 60, COWBELL, 115),
+            (960, FS3, 72, COWBELL, 100),
+            (1152, CS4, 60, COWBELL, 124),
+            (1344, FS3, 96, COWBELL, 110),
         ]
     )
 
 
 def pat_cowbell_sparse() -> bytes:
-    """PAT 13 — 4-bar sparse cowbell (intro/outro)."""
+    """PAT 3 — 4-bar intro/outro."""
+    return join_notes(
+        [
+            (0, FS3, 144, COWBELL, 90),
+            (576, CS3, 120, COWBELL, 75),
+            (1152, FS3, 168, COWBELL, 95),
+        ]
+    )
+
+
+def pat_drums_intro() -> bytes:
+    """PAT 4 — 1-bar soft pulse."""
+    return join_notes(
+        [
+            (0, DRUM, 72, KICK, 100),
+            (0, DRUM, 48, KICK2, 60),
+            (288, DRUM, 36, CLAP, 50),
+        ]
+    )
+
+
+def pat_drums_half() -> bytes:
+    """PAT 5 — 1-bar phonk half-time (verse)."""
+    return join_notes(
+        [
+            (0, DRUM, 84, KICK, 122),
+            (0, DRUM, 48, KICK2, 85),
+            (192, DRUM, 60, KICK, 100),
+            (96, DRUM, 48, CLAP, 118),
+            (96, DRUM, 36, SNARE, 70),
+            (288, DRUM, 48, CLAP, 120),
+            (288, DRUM, 48, SNARE, 90),
+            (336, DRUM, 20, SNARE2, 45),
+        ]
+    )
+
+
+def pat_drums_hardstyle() -> bytes:
+    """PAT 6 — 1-bar hardstyle 4-on-floor + clap on 2/4."""
+    return join_notes(
+        [
+            (0, DRUM, 56, KICK, 127),
+            (0, DRUM, 40, KICK2, 95),
+            (96, DRUM, 56, KICK, 120),
+            (96, DRUM, 32, KICK2, 80),
+            (192, DRUM, 56, KICK, 127),
+            (192, DRUM, 40, KICK2, 90),
+            (288, DRUM, 56, KICK, 120),
+            (288, DRUM, 32, KICK2, 80),
+            (96, DRUM, 36, CLAP, 105),
+            (288, DRUM, 36, CLAP, 110),
+            (288, DRUM, 28, SNARE, 75),
+        ]
+    )
+
+
+def pat_drums_ultra() -> bytes:
+    """PAT 7 — 1-bar ultra-slowed break."""
+    return join_notes(
+        [
+            (0, DRUM, 120, KICK, 115),
+            (0, DRUM, 60, KICK2, 80),
+            (192, DRUM, 40, CLAP, 55),
+        ]
+    )
+
+
+def pat_drums_build() -> bytes:
+    """PAT 8 — 1-bar hardtekk roll (into drop)."""
     hits = [
-        (0, AB3, 96, COWBELL, 100),
-        (192, EB3, 72, COWBELL, 80),
-        (384, DB3, 96, COWBELL, 95),
-        (576, AB3, 72, COWBELL, 85),
-        (768, BB3, 96, COWBELL, 100),
-        (960, EB3, 72, COWBELL, 80),
-        (1152, AB3, 120, COWBELL, 105),
-        (1392, EB3, 72, COWBELL, 75),
+        (0, DRUM, 48, KICK, 110),
+        (0, DRUM, 160, FX, 100),
     ]
+    fills = [FILL1, FILL2, FILL1, FILL3, FILL2, FILL4, FILL3, FILL5,
+             FILL2, FILL3, FILL4, FILL5, FILL3, FILL4, FILL5, FILL5]
+    vels = list(range(50, 50 + 16 * 4, 4))
+    for i, (rack, vel) in enumerate(zip(fills, vels)):
+        hits.append((i * 24, DRUM, 18, rack, min(127, vel)))
     return join_notes(hits)
 
 
+def pat_drums_fill() -> bytes:
+    """PAT 9 — 1-bar punch + crash into section."""
+    return join_notes(
+        [
+            (0, DRUM, 48, KICK, 120),
+            (96, DRUM, 36, CLAP, 105),
+            (144, DRUM, 24, SNARE, 85),
+            (192, DRUM, 24, SNARE2, 100),
+            (216, DRUM, 24, SNARE3, 110),
+            (240, DRUM, 24, SNARE, 115),
+            (264, DRUM, 24, SNARE4, 120),
+            (288, DRUM, 40, CLAP, 124),
+            (288, DRUM, 36, SNARE, 110),
+            (336, DRUM, 24, FILL5, 127),
+            (0, DRUM, 200, CRASH, 110),
+            (0, DRUM, 120, FX, 95),
+        ]
+    )
+
+
+def pat_808_verse() -> bytes:
+    """PAT 10 — 4-bar verse 808 (held, breathing)."""
+    return join_notes(
+        [
+            (0, FS2, 300, BASS_808, 118),
+            (0, FS3, 72, BASS_SHOT, 70),
+            (384, E3, 280, BASS_808, 110),
+            (768, CS3, 280, BASS_808, 112),
+            (768, CS3, 60, BASS_SHOT, 75),
+            (1152, B2, 200, BASS_808, 115),
+            (1392, FS2, 120, BASS_808, 120),
+        ]
+    )
+
+
+def pat_808_drop() -> bytes:
+    """PAT 11 — 4-bar reverse-bass pump (locked to kick grid)."""
+    return join_notes(
+        [
+            (0, FS2, 80, BASS_808, 127),
+            (0, FS3, 48, BASS_SHOT, 100),
+            (96, FS2, 70, BASS_808, 110),
+            (192, FS2, 80, BASS_808, 124),
+            (288, FS2, 70, BASS_808, 108),
+            (384, CS3, 80, BASS_808, 127),
+            (384, CS3, 48, BASS_SHOT, 95),
+            (480, CS3, 70, BASS_808, 110),
+            (576, E3, 80, BASS_808, 118),
+            (672, B2, 70, BASS_808, 105),
+            (768, FS2, 80, BASS_808, 127),
+            (768, A3, 48, BASS_SHOT, 100),
+            (864, FS2, 70, BASS_808, 108),
+            (960, FS2, 80, BASS_808, 122),
+            (1056, A2, 70, BASS_808, 100),
+            (1152, 30, 90, BASS_808, 127),
+            (1152, FS2, 56, BASS_SHOT, 110),
+            (1296, FS2, 72, BASS_808, 118),
+            (1440, CS3, 72, BASS_808, 108),
+        ]
+    )
+
+
+def pat_808_break() -> bytes:
+    """PAT 12 — 4-bar drone break."""
+    return join_notes(
+        [
+            (0, FS2, 340, BASS_808, 100),
+            (768, CS3, 340, BASS_808, 95),
+        ]
+    )
+
+
+def pat_perc_light() -> bytes:
+    """PAT 13 — 1-bar light ghosts (drops only, not continuous mush)."""
+    return join_notes(
+        [
+            (48, DRUM, 16, SNARE3, 40),
+            (168, DRUM, 16, SNARE4, 45),
+            (264, DRUM, 16, SNARE2, 42),
+            (348, DRUM, 16, SNARE3, 48),
+        ]
+    )
+
+
+def pat_impact() -> bytes:
+    """PAT 14 — 1-bar section hit."""
+    return join_notes(
+        [
+            (0, DRUM, 220, CRASH, 115),
+            (0, DRUM, 160, CRASH2, 85),
+            (0, DRUM, 180, FX, 105),
+            (0, DRUM, 72, KICK, 127),
+            (0, DRUM, 48, KICK2, 100),
+            (192, DRUM, 96, FX2, 80),
+        ]
+    )
+
+
 PATTERN_NOTES = {
-    1: pat_cowbell_a,
-    2: pat_cowbell_b,
-    3: pat_drums_intro,
-    4: pat_drums_groove,
+    1: pat_cowbell_hook,
+    2: pat_cowbell_drop,
+    3: pat_cowbell_sparse,
+    4: pat_drums_intro,
     5: pat_drums_half,
-    6: pat_drums_fill_a,
-    7: pat_drums_fill_b,
-    8: pat_808_verse,
-    9: pat_808_drop,
-    10: pat_808_break,
-    11: pat_perc_spice,
-    12: pat_impact,
-    13: pat_cowbell_sparse,
+    6: pat_drums_hardstyle,
+    7: pat_drums_ultra,
+    8: pat_drums_build,
+    9: pat_drums_fill,
+    10: pat_808_verse,
+    11: pat_808_drop,
+    12: pat_808_break,
+    13: pat_perc_light,
+    14: pat_impact,
 }
 
 PATTERN_NAMES = {
-    1: "Cowbell A",
-    2: "Cowbell B",
-    3: "Drums Intro",
-    4: "Drums Groove",
+    1: "Cowbell Hook",
+    2: "Cowbell Drop",
+    3: "Cowbell Sparse",
+    4: "Drums Intro",
     5: "Drums Half",
-    6: "Fill A",
-    7: "Fill B",
-    8: "808 Verse",
-    9: "808 Drop",
-    10: "808 Break",
-    11: "Perc Spice",
-    12: "Impact",
-    13: "Cowbell Sparse",
+    6: "Drums Hardstyle",
+    7: "Drums Ultra",
+    8: "Build Roll",
+    9: "Fill Punch",
+    10: "808 Verse",
+    11: "808 Drop",
+    12: "808 Break",
+    13: "Perc Light",
+    14: "Impact",
 }
 
 
 # ---------------------------------------------------------------------------
-# Arrangement — 64 bars @ 130 BPM ≈ 1:58
+# Arrangement — 64 bars @ 150 BPM ≈ 1:42
 # ---------------------------------------------------------------------------
 #
-#  0–7    INTRO     sparse cowbell + intro drums → groove enters
-#  8–23   VERSE     full groove + cowbell A + 808 verse
-#  24–31  BREAK     half-time + sparse 808 + fill into drop
-#  32–47  DROP      cowbell B + groove + spice + 808 drop
-#  48–55  BRIDGE    cowbell A + half drums + 808 break
-#  56–63  OUTRO     sparse + impacts fading
+#  0–8    INTRO     sparse cowbell + pulse → half enters
+#  8–16   VERSE     half-time + hook + held 808
+#  16–24  BUILD     hook → roll into drop
+#  24–40  DROP 1    hardstyle + drop cowbell + reverse 808
+#  40–48  BREAK     ultra + drone
+#  48–56  DROP 2    hardstyle return (shorter)
+#  56–64  OUTRO     sparse fade
 
 
 def build_playlist() -> bytes:
-    """Long looping clips on ENABLED template playlist tracks."""
     clips: list[bytes] = []
 
     def add(pat: int, start: float, length: float, track: int) -> None:
         clips.append(pack_clip(pat, start, length, track))
 
     # ===== INTRO 0–8 =====
-    add(13, 0, 4, TR_COWBELL)
+    add(3, 0, 4, TR_COWBELL)
     add(1, 4, 4, TR_COWBELL)
-    add(3, 0, 4, TR_DRUMS)
-    add(4, 4, 3, TR_DRUMS)
-    add(6, 7, 1, TR_DRUMS)
-    add(10, 4, 4, TR_BASS)
-    add(12, 4, 1, TR_FX)
+    add(4, 0, 4, TR_DRUMS)
+    add(5, 4, 3, TR_DRUMS)
+    add(9, 7, 1, TR_DRUMS)
+    add(12, 4, 4, TR_BASS)
+    add(14, 4, 1, TR_FX)
 
-    # ===== VERSE 8–24 =====
-    add(1, 8, 16, TR_COWBELL)
-    add(4, 8, 15, TR_DRUMS)
-    add(6, 23, 1, TR_DRUMS)
-    add(8, 8, 16, TR_BASS)
-    add(12, 8, 1, TR_FX)
-    add(12, 16, 1, TR_FX)
+    # ===== VERSE 8–16 =====
+    add(1, 8, 8, TR_COWBELL)
+    add(5, 8, 7, TR_DRUMS)
+    add(9, 15, 1, TR_DRUMS)
+    add(10, 8, 8, TR_BASS)
+    add(14, 8, 1, TR_FX)
 
-    # ===== BREAK 24–32 =====
-    add(13, 24, 4, TR_COWBELL)
-    add(1, 28, 3, TR_COWBELL)
-    add(5, 24, 6, TR_DRUMS)
-    add(3, 30, 1, TR_DRUMS)
-    add(7, 31, 1, TR_DRUMS)
-    add(10, 24, 7, TR_BASS)
-    add(12, 24, 1, TR_FX)
-    add(12, 31, 1, TR_FX)
+    # ===== BUILD 16–24 =====
+    add(1, 16, 4, TR_COWBELL)
+    add(2, 20, 3, TR_COWBELL)
+    add(5, 16, 4, TR_DRUMS)
+    add(8, 20, 3, TR_DRUMS)  # hardtekk roll
+    add(9, 23, 1, TR_DRUMS)
+    add(10, 16, 4, TR_BASS)
+    add(11, 20, 3, TR_BASS)  # bass starts pumping early
+    add(14, 20, 1, TR_FX)
+    add(14, 23, 1, TR_FX)
 
-    # ===== DROP 32–48 =====
-    add(2, 32, 16, TR_COWBELL)
-    add(4, 32, 7, TR_DRUMS)
-    add(6, 39, 1, TR_DRUMS)
-    add(4, 40, 7, TR_DRUMS)
-    add(7, 47, 1, TR_DRUMS)
-    add(9, 32, 16, TR_BASS)
-    add(11, 32, 16, TR_PERC)
-    add(12, 32, 1, TR_FX)
-    add(12, 40, 1, TR_FX)
+    # ===== DROP 1  24–40 =====
+    add(2, 24, 16, TR_COWBELL)
+    add(6, 24, 7, TR_DRUMS)
+    add(9, 31, 1, TR_DRUMS)
+    add(6, 32, 7, TR_DRUMS)
+    add(9, 39, 1, TR_DRUMS)
+    add(11, 24, 16, TR_BASS)
+    add(13, 24, 8, TR_PERC)  # light ghosts first half only
+    add(14, 24, 1, TR_FX)
+    add(14, 32, 1, TR_FX)
 
-    # ===== BRIDGE 48–56 =====
-    add(1, 48, 4, TR_COWBELL)
-    add(13, 52, 4, TR_COWBELL)
-    add(5, 48, 6, TR_DRUMS)
-    add(3, 54, 1, TR_DRUMS)
-    add(7, 55, 1, TR_DRUMS)
-    add(10, 48, 4, TR_BASS)
-    add(8, 52, 3, TR_BASS)
-    add(12, 48, 1, TR_FX)
-    add(12, 55, 1, TR_FX)
+    # ===== BREAK 40–48 =====
+    add(3, 40, 8, TR_COWBELL)
+    add(7, 40, 6, TR_DRUMS)
+    add(8, 46, 1, TR_DRUMS)
+    add(9, 47, 1, TR_DRUMS)
+    add(12, 40, 7, TR_BASS)
+    add(14, 40, 1, TR_FX)
+    add(14, 47, 1, TR_FX)
+
+    # ===== DROP 2  48–56 =====
+    add(2, 48, 8, TR_COWBELL)
+    add(6, 48, 7, TR_DRUMS)
+    add(9, 55, 1, TR_DRUMS)
+    add(11, 48, 8, TR_BASS)
+    add(13, 48, 8, TR_PERC)
+    add(14, 48, 1, TR_FX)
 
     # ===== OUTRO 56–64 =====
-    add(2, 56, 4, TR_COWBELL)
-    add(13, 60, 4, TR_COWBELL)
-    add(4, 56, 4, TR_DRUMS)
-    add(3, 60, 3, TR_DRUMS)
-    add(5, 63, 1, TR_DRUMS)
-    add(9, 56, 4, TR_BASS)
-    add(10, 60, 4, TR_BASS)
-    add(11, 56, 4, TR_PERC)
-    add(12, 56, 1, TR_FX)
-    add(12, 60, 1, TR_FX)
+    add(1, 56, 4, TR_COWBELL)
+    add(3, 60, 4, TR_COWBELL)
+    add(5, 56, 4, TR_DRUMS)
+    add(7, 60, 3, TR_DRUMS)
+    add(4, 63, 1, TR_DRUMS)
+    add(10, 56, 4, TR_BASS)
+    add(12, 60, 4, TR_BASS)
+    add(14, 56, 1, TR_FX)
+    add(14, 60, 1, TR_FX)
 
     return b"".join(clips)
 
 
 def enable_all_playlist_tracks(payload: bytes) -> bytes:
-    """Force playlist track enabled + unlocked (event 238 TrackData, 66 bytes)."""
     if len(payload) < 48:
         return payload
     data = bytearray(payload)
-    data[12] = 1  # enabled
+    data[12] = 1
     if len(data) > 21:
-        data[21] = 0  # content_locked
+        data[21] = 0
     if len(data) > 46:
-        data[46] = 0  # grouped
+        data[46] = 0
     if len(data) > 47:
-        data[47] = 0  # locked
+        data[47] = 0
     return bytes(data)
 
 
@@ -689,14 +652,22 @@ def patch_project(events: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
     current_chan: int | None = None
     current_pat: int | None = None
     notes_replaced: set[int] = set()
+    names_replaced: set[int] = set()
     chan_named: set[int] = set()
     playlist_done = False
     title_done = False
+    tempo_done = False
+    last_track_iid: int | None = None
 
     for eid, payload in events:
         if eid == 194 and not title_done:
-            out.append((194, utf16_encode("Dark Phonk")))
+            out.append((194, utf16_encode(SONG_TITLE)))
             title_done = True
+            continue
+
+        if eid == 156 and not tempo_done:
+            out.append((156, struct.pack("<I", BPM * 1000)))
+            tempo_done = True
             continue
 
         if eid == 64:
@@ -709,6 +680,12 @@ def patch_project(events: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
             current_pat = struct.unpack("<H", payload)[0]
             current_chan = None
             out.append((eid, payload))
+            continue
+
+        # Pattern name (event 193)
+        if eid == 193 and current_pat in PATTERN_NAMES and current_pat not in names_replaced:
+            out.append((193, utf16_encode(PATTERN_NAMES[current_pat])))
+            names_replaced.add(current_pat)
             continue
 
         if eid == 224:
@@ -726,8 +703,14 @@ def patch_project(events: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
             playlist_done = True
             continue
 
-        if eid == 238:  # playlist track data — unmute/unlock every lane
+        if eid == 238:
+            last_track_iid = struct.unpack_from("<I", payload, 0)[0]
             out.append((238, enable_all_playlist_tracks(payload)))
+            continue
+
+        if eid == 239 and last_track_iid in TRACK_RENAMES:
+            out.append((239, utf16_encode(TRACK_RENAMES[last_track_iid])))
+            last_track_iid = None
             continue
 
         if eid == 196 and current_chan is not None:
@@ -761,6 +744,8 @@ def patch_project(events: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
     for pat, builder in PATTERN_NOTES.items():
         if pat not in notes_replaced:
             out.append((65, struct.pack("<H", pat)))
+            if pat in PATTERN_NAMES:
+                out.append((193, utf16_encode(PATTERN_NAMES[pat])))
             out.append((224, builder()))
             notes_replaced.add(pat)
 
@@ -775,12 +760,22 @@ def verify(path: Path) -> None:
     pat_notes: dict[int, int] = {}
     playlist_clips = 0
     racks_used: set[int] = set()
+    tempo = None
+    track_names: dict[int, str] = {}
+    last_iid = None
 
     for eid, p in events:
-        if eid == 64:
+        if eid == 156 and len(p) >= 4:
+            tempo = struct.unpack("<I", p[:4])[0] / 1000.0
+        elif eid == 64:
             chan = struct.unpack("<H", p)[0]
         elif eid == 65:
             pat = struct.unpack("<H", p)[0]
+        elif eid == 238:
+            last_iid = struct.unpack_from("<I", p, 0)[0]
+        elif eid == 239 and last_iid is not None:
+            track_names[last_iid] = utf16_decode(p).rstrip("\x00")
+            last_iid = None
         elif eid == 196 and chan in USED_CHANNELS:
             sp = utf16_decode(p)
             if not Path(sp).exists():
@@ -818,7 +813,6 @@ def verify(path: Path) -> None:
                         problems.append(f"playlist#{i} refs missing pat {pn}")
                 if length < BAR // 4:
                     problems.append(f"playlist#{i} tiny length {length} ticks")
-                # Pattern clips: end uint must equal length (template convention)
                 if end_u != length or start_u != 0:
                     problems.append(
                         f"playlist#{i} bad pattern offsets start_u={start_u} end_u={end_u} len={length}"
@@ -828,18 +822,8 @@ def verify(path: Path) -> None:
                 track_iid = 500 - vals[4]
                 if track_iid == 1:
                     problems.append(f"playlist#{i} on disabled track 1")
-                if track_iid not in (
-                    TR_COWBELL,
-                    TR_BASS,
-                    TR_DRUMS,
-                    TR_PERC,
-                    TR_FX,
-                ):
+                if track_iid not in (TR_COWBELL, TR_BASS, TR_DRUMS, TR_PERC, TR_FX):
                     problems.append(f"playlist#{i} unexpected track {track_iid}")
-        elif eid == 238 and len(p) >= 13:
-            iid = struct.unpack_from("<I", p, 0)[0]
-            if iid <= 20 and p[12] != 1:
-                problems.append(f"playlist track {iid} still disabled")
         elif eid == 203:
             name = utf16_decode(p)
             if any(m in name for m in MISSING_VSTS):
@@ -850,7 +834,22 @@ def verify(path: Path) -> None:
                     problems.append(f"VST state left: {m}")
                     break
 
-    print(f"\n  playlist clips: {playlist_clips}")
+    print(f"\n  tempo: {tempo} BPM")
+    if tempo != float(BPM):
+        problems.append(f"tempo {tempo} != {BPM}")
+    print("  playlist lanes:")
+    for iid in (TR_COWBELL, TR_BASS, TR_DRUMS, TR_PERC, TR_FX):
+        print(f"    iid {iid} → {track_names.get(iid, '?')!r}")
+        if track_names.get(iid) not in (
+            TRACK_RENAMES.get(iid),
+            TRACK_RENAMES.get(iid, "").rstrip("\x00"),
+        ):
+            # allow exact rename match
+            expected = TRACK_RENAMES[iid]
+            got = track_names.get(iid, "")
+            if got != expected:
+                problems.append(f"track {iid} name {got!r} != {expected!r}")
+    print(f"  playlist clips: {playlist_clips}")
     print("  patterns:")
     for pn in sorted(PATTERN_NOTES):
         count = pat_notes.get(pn, 0)
@@ -859,8 +858,6 @@ def verify(path: Path) -> None:
         if count == 0:
             problems.append(f"pattern {pn} empty")
 
-    missing_racks = USED_CHANNELS - racks_used
-    # vocals etc. in SAMPLE_MAP but not USED — fine
     unused_sound = {c for c in USED_CHANNELS if c not in racks_used}
     if unused_sound:
         print(f"  unused channels (ok if intentional): {sorted(unused_sound)}")
@@ -890,15 +887,14 @@ def main() -> None:
     print(f"Wrote {OUT_FLP} ({OUT_FLP.stat().st_size:,} bytes)")
     verify(OUT_FLP)
 
-    # also copy into FL Studio Projects
     projects = (
         Path.home()
         / "Documents"
         / "Image-Line"
         / "FL Studio"
         / "Projects"
-        / "dark_phonk"
-        / "dark_phonk.flp"
+        / "covenant_strike"
+        / "covenant_strike.flp"
     )
     projects.parent.mkdir(parents=True, exist_ok=True)
     projects.write_bytes(OUT_FLP.read_bytes())

@@ -115,8 +115,9 @@ FL21+ uses 60-byte items; match the template's item size exactly or FL crashes
 **Gotcha #4 — playlist track mapping:** pyflp maps
 `track_idx = 499 - track_rvidx` to the Nth TrackData event (0-based).
 With `track_rvidx = 500 - track_iid`, clips land on playlist track **iid**.
-In phonk mano, **iid 1 is disabled+locked** — never put clips on track 1.
-Use named enabled lanes, e.g. 3=Cowbell, 4=Bass, 6=Kick, 9=Snares, 14=FX.
+In phonk mano, **iid 1 ("Original") is disabled+locked** — never put clips there.
+Verified lanes: **2=Cowbell, 3=Bass, 5=Kick, 8=Snares, 13=FX**.
+(Do not use off-by-one guesses like 3/4/6/9/14 — those land on Bass/Acapella/Reverse Kick.)
 
 **Gotcha #5 — prefer long looping clips:** Many abutting 1-bar clips restart
 patterns at every bar and cut 808/crash tails. One long clip of a 1- or 4-bar
