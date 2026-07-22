@@ -1,20 +1,52 @@
 ---
 name: flp-generation
-description: Generate and patch FL Studio .flp project files programmatically with Python (manual binary parsing, not PyFLP). Use when generating FLP files, editing FL Studio projects from code, or debugging FLP audio/silence issues (missing samples, missing VSTs, slide-note bug, playlist clip format, mixer routing, disabled playlist tracks, mute-tool / muted clips).
+description: >-
+  Programmatic FL Studio music production — composition, arrangement, theory, and
+  .flp encoding. Use when generating or patching .flp projects, writing song
+  generators, choosing harmony/structure, or debugging FLP silence (slide notes,
+  playlist clips, track mapping, VSTs, mute flags). Covers phonk, hardstyle,
+  ambient/dreamscape, and synth-based tracks.
 ---
 
-# FL Studio .flp Generation
+# FL Studio Music Production & .flp Generation
 
-Hard-won knowledge from building a dark-phonk FLP generator. The FLP format is
-undocumented and brittle; most "no audio" bugs come from a handful of specific
-gotchas below. **When audio is missing, walk the checklist at the bottom first.**
+Two layers: **make good music** (theory, arrangement, composition) then **encode
+it correctly** (FLP binary format). Most user-facing failures are musical
+(incoherent density, wrong lanes, no sections); most silent-FLP bugs are format
+(slide notes, item_index, disabled tracks).
 
 ## When to use this skill
 
-- Generating `.flp` files from code
-- Patching an existing template `.flp` (notes, playlist, sample paths, routing)
-- Debugging an FLP that loads but produces no sound / 0% CPU / black meters
-- Song mode plays only some patterns while PAT mode is fine
+- Writing a new song generator or patching an existing `.flp`
+- Choosing key, progression, groove, section structure before coding
+- Debugging missing audio / Song-mode silence / muted clips
+- Any genre: phonk, hardstyle, ambient dreamscape, synth instrumentals
+
+## Production first (read before composing)
+
+**Do not jump straight to FLP bytes.** Follow the workflow in
+[production.md](production.md):
+
+1. **Intent** — mood, genre, tempo, key, references
+2. **Harmony** — progression + voice-leading
+3. **Roles** — one job per channel/lane
+4. **Patterns** — each PAT playable alone
+5. **Arrangement** — 8-bar grid, subtractive sections
+6. **Encode** — clone template, patch events (below)
+7. **Verify** — musical checklist (production.md) + FLP checklist (below)
+
+Genre templates and lane maps: [genres.md](genres.md)
+
+For deeper theory, hooks, low-end, tension tools, reference analysis, and the
+pre-encode quality rubric → [production-advanced.md](production-advanced.md)
+
+Quick musical rules:
+- Four pillars: melody, harmony, rhythm, arrangement — all required
+- Build drop/peak first, subtract for intro/break
+- Max ~4 elements per frequency band; velocity tiers not all 127
+- Break = remove kick + sub; drop impact comes from absence
+
+---
 
 ## Recommended approach: clone-and-patch, not from-scratch
 
@@ -231,7 +263,13 @@ Always re-parse your output and confirm:
 
 ## Reference
 
-- Full parser/writer code and event-ID tables: see [reference.md](reference.md)
+- **Music production** (theory, arrangement): [production.md](production.md)
+- **Advanced production** (hooks, harmony, low-end, rubric): [production-advanced.md](production-advanced.md)
+- **Song brief template**: [song-brief-template.md](song-brief-template.md)
+- **Genre & template maps**: [genres.md](genres.md)
+- **FLP parser/writer code**: [reference.md](reference.md)
 - Generators in this repo:
-  - `generate_dark_phonk.py` — phonk mano template, **32-byte** playlist clips
-  - `generate_white_armor.py` — Project_5 native synths, **60-byte** (FL24) clips
+  - `generate_dark_phonk.py` — phonk mano, 32-byte clips
+  - `generate_hardstyle_phonk.py` — phonk mano, 32-byte clips
+  - `generate_white_armor.py` — Project_5 synths, 60-byte clips
+  - `generate_pale_meridian.py` — Project_5 dreamscape, 60-byte clips

@@ -188,3 +188,8 @@ types make surgical edits hard. Use it to *inspect* structure, but do binary
 edits with the manual parser above. Source: `pyflp/pattern.py` (note struct,
 `_NoteFlags`), `pyflp/mixer.py` (`_InsertFlags`, `InsertFlagsEvent` 12-byte
 struct), `pyflp/plugin.py` (plugin event IDs).
+
+## Additional resources
+
+- Music theory, arrangement, composition: [production.md](production.md)
+- Genre templates and playlist lane maps: [genres.md](genres.md)
